@@ -17,30 +17,84 @@ data class MotorVelocity(val rightVelocity: Double, val leftVelocity: Double) {
     )
 }
 
-data class Waypoint(x: Double, y: Double)
+data class Waypoint(val x: Double, val y: Double)
 
-interface ConstantCurvaturePath {
-    val curvature: Double
-    
-    // time should range from 0 to 1, 1 being the end of the path, 0 being the beginning
-    fun generate(time: Double): Waypoint
+interface Path {
+    // t should range from 0 to 1, 1 being the end of the path, 0 being the beginning
+    fun generate(t: Double): Waypoint
+
+    val length: Double
 }
 
-data class MotionProfilingConstraints(val maximumVelocity, val maximumAcceleration)
+interface ConstantCurvaturePath : Path{
+    val curvature: Double
+}
 
-class ArcPath(): ConstantCurvaturePath {
-    override val curvature = 
+class ArcPath(val startPoint: Waypoint, val centerPoint: Waypoint, val endAngle: Double): ConstantCurvaturePath {
+    private val radius = Math.sqrt(
+        Math.pow(startPoint.x-centerPoint.x, 2.0) +
+        Math.pow(startPoint.y-centerPoint.y, 2.0)
+    )
+    private val startAngle = Math.atan2(startPoint.y-centerPoint.y, startPoint.x-startPoint.x)
+    private val correctedEndAngle = endAngle % Math.PI*2
 
-    override fun generate(time: Double): Waypoint {
-
+    override val length = Math.abs((correctedEndAngle-startAngle)*radius)
+    override val curvature = 1/radius
+    
+    override fun generate(t: Double): Waypoint {
+        val tScaled = Math.abs((t * (correctedEndAngle - startAngle)) + startAngle)
+        return Waypoint(
+            centerPoint.x + radius * Math.cos(tScaled),
+            centerPoint.y + radius * Math.sin(tScaled)
+        )
     }
 }
 
-class ConstantCurvaturePathFollower(path: ConstantCurvaturePath) {
 
+data class MotionProfilingConstraints(val maximumVelocity: Double, val maximumAcceleration: Double)
+
+interface PathFollower {
+    val timeToFollow: Double
+    // t should range from 0 to the amount of time for the path in seconds
+    fun generate(t: Double): DriveTrainState
+}
+
+class ConstantCurvaturePathFollower
+    (val path: ConstantCurvaturePath, val constraints: MotionProfilingConstraints, val statistics: DriveTrainStatistics) : PathFollower {
+
+    private val timeToAccelerate = (constraints.maximumVelocity/constraints.maximumAcceleration)
+
+    override val timeToFollow = timeToAccelerate + (path.length/constraints.maximumVelocity)
+
+    private val timeToCruise = timeToFollow - timeToAccelerate
+
+    override fun generate(t: Double): DriveTrainState {
+        val rightVelocity = when {
+            t < timeToAccelerate -> constraints.maximumAcceleration * t
+            t <= timeToCruise -> constraints.maximumVelocity
+            t <= timeToFollow -> ((constraints.maximumVelocity*constraints.maximumVelocity)/
+                (2.0*constraints.maximumAcceleration)) - 
+                (constraints.maximumAcceleration*t)
+            else -> 0.0
+        }
+
+        val rightToLeftRatio = 1-path.curvature
+
+        println(rightToLeftRatio)
+
+        val rightVelocityScaled = if (rightToLeftRatio > -1) rightVelocity else Math.abs(rightVelocity/rightToLeftRatio) 
+
+        return MotorVelocity(rightVelocityScaled, rightVelocityScaled * rightToLeftRatio).toDriveTrainState(statistics)
+    }
 }
 
 fun main(args: Array<String>) {
-    val driveTrainStatistics = DriveTrainStatistics(1.0, 1.0)
-    println(DriveTrainState(2.0, 0.1).toMotorVelocity(driveTrainStatistics))
+    val constraints = MotionProfilingConstraints(10.0, 1.0)
+    val statistics = DriveTrainStatistics(1.0, 1.0)
+
+    val path = ArcPath(Waypoint(0.0, 100.0), Waypoint(0.0, 0.0), Math.PI)
+    val follower = ConstantCurvaturePathFollower(path, constraints, statistics)
+
+    println(path.curvature)
+    println(follower.generate(follower.timeToFollow/2).toMotorVelocity(statistics))
 }
