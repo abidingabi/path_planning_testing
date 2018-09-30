@@ -11,7 +11,7 @@ class ConstantCurvaturePathFollower
 
     private val timeToCruise = timeToFollow - timeToAccelerate
 
-    override fun generate(t: Double): DriveTrainState {
+    override fun generate(t: Double): PathFollowerResult {
         val rightVelocity = when {
             t < timeToAccelerate -> constraints.maximumAcceleration * t
             t <= timeToCruise -> constraints.maximumVelocity
@@ -25,6 +25,9 @@ class ConstantCurvaturePathFollower
 
         val rightVelocityScaled = if (rightToLeftRatio > -1) rightVelocity else Math.abs(rightVelocity/rightToLeftRatio) 
 
-        return MotorVelocity(rightVelocityScaled, rightVelocityScaled * rightToLeftRatio).toDriveTrainState(statistics)
+        return PathFollowerResult(
+            MotorVelocity(rightVelocityScaled, rightVelocityScaled * rightToLeftRatio).toDriveTrainState(statistics),
+            path.generate(t/timeToFollow)
+        )
     }
 }
