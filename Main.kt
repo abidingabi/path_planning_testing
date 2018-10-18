@@ -5,11 +5,16 @@ import main.*
 // https://www.dis.uniroma1.it/~labrob/pub/papers/Ramsete01.pdf is an amazing paper
 
 fun main(args: Array<String>) {
-    val constraints = MotionProfilingConstraints(10.0, 1.0)
+    val constraints = MotionProfilingConstraints(2.3, 1.0)
     val statistics = DriveTrainStatistics(1.0, 1.0)
 
-    val path = LinearPath(Waypoint(-1.0, 0.0), Waypoint(-2.0, 2.0))
-    // val follower = ConstantCurvaturePathFollower(path, constraints, statistics)
+    val path = LinearPath(Waypoint(0.0, 0.0), Waypoint(0.0, 100.0))
+    val follower = ConstantCurvaturePathFollower(path, constraints, statistics)
 
-    println(path.generate(0.25))
+    var t = 0.0
+
+    while (t <= follower.timeToFollow) {
+        println(follower.generate(t).state.toMotorVelocity(statistics))
+        t += 0.01
+    }    
 }
